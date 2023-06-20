@@ -1,25 +1,22 @@
 from django.db import models
 import uuid
 
-STATUS = ((0, "Pending"), (1, 'Complete'), (2, "Failed"))
+STATUS = ((0, "Pending"), (1, "Complete"), (2, "Failed"))
 
 
 class Transactional(models.Model):
-    transaction_num = models.CharField(default=uuid.uuid4,
-                                       max_length=50,
-                                       unique=True)
-    phone_num = models.CharField(null=False, blank=False)
+    # transaction_num = models.CharField(default=uuid.uuid4, max_length=50, unique=True)
+    merchant_request_id = models.CharField()
     checkout_request_id = models.CharField(max_length=200)
-    account_reference = models.CharField(max_length=40, blank=True)
-    transaction_desc = models.TextField()
+    response_code = models.CharField()
+    response_desc = models.CharField()
     mpesa_receipt_num = models.CharField()
-    created_on = models.DateField(auto_now_add=True)
-    party_A = models.CharField()
-    party_B = models.CharField()
-    amount = models.CharField(max_length=10)
+    transaction_date = models.DateTimeField()
+    amount = models.CharField(max_length=20)
+    phone_num = models.DateTimeField()
     payment_status = models.CharField(max_length=15, choices=STATUS, default=1)
+    ip_addr = models.CharField(max_length=200, blank=True, null=True)
+    transaction_response_code = models.CharField()
 
-    ip = models.CharField(max_length=200, blank=True, null=True)
-
-    def __unicode__(self):
-        return f"{self.transaction_num}"
+    # def __unicode__(self):
+    #     return f"{self.transaction_num}"

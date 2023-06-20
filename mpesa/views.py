@@ -10,6 +10,8 @@ gateway = MpesaGateWay()
 
 # initiate skt push view
 class MpesaCheckout(APIView):
+    # todo: i dont think the user should provide any credentails....fetch them from the user object
+    
     serializer = MpesaCheckoutSerializer
 
     def post(self, request):
