@@ -10,6 +10,21 @@ from rest_framework.response import Response
 env = environ.Env()
 
 
+def get_mpesa_status(data):
+    # todo: there are two objects we can get from callback,a success one and one which can fail...based way to handle that??
+    try:
+        status = data["Body"["stkCallback"]["ResultCode"]]  # the value is usually 0
+    except Exception as e:
+        status = 1  # this is when are exception occurs
+    return status
+
+
+def get_transaction_object(data):
+    return Transactional.objects.get_or_create(
+        checkout_request_id=data["Body"["stkCallback"]["CheckoutRequestID"]]
+    )
+
+
 class MpesaGateWay:
     shortcode = None
     consumer_key = None
@@ -17,17 +32,20 @@ class MpesaGateWay:
     access_token_url = None
     access_token = None
     access_token_expiration = None
-    access_token_url = None
+    pass_key = None
+    short_code = None
+    headers = None
 
     def __init__(self):
-        self.shortcode = env("shortcode")
+        self.short_code = env("short_code")
         self.consumer_key = env("consumer_key")
         self.consumer_secret = env("consumer_secret")
         self.access_token_url = env("access_token_url")
+        self.pass_key = env("pass_key")
 
         try:
             self.access_token = self.get_access_token()
-            if self.access_token == None:
+            if self.access_token is None:
                 raise Exception("an error occured")
         except Exception as e:
             raise e
@@ -38,10 +56,10 @@ class MpesaGateWay:
     class Decorators:
         @staticmethod
         def refreshToken(decorator):
-            def wrapper(gateway: MpesaGateWay, *args, **kwargs):
+            def wrapper(gateway, *args, **kwargs):
                 if (
-                    gateway.access_token_expiration
-                    and time.time() > gateway.access_token_expiration
+                        gateway.access_token_expiration
+                        and time.time() > gateway.access_token_expiration
                 ):
                     token = gateway.get_access_token()
                     gateway.access_token = token
@@ -59,31 +77,35 @@ class MpesaGateWay:
         except Exception as e:
             raise e
         else:
-            accessToken = res.json()["accessToken"]
+            print(res.json())
+            accessToken = res.json()["access_token"]
             self.headers = {"Authorization": f"Bearer {accessToken}"}
             return accessToken
 
     # password to be used in request to be sent to mpesa
-    def generatePassword(shortCode, passkey, timestamp):
+    def generatePassword(self, shortCode, passkey, timestamp):
         return base64.b64encode(
             f"{shortCode}{passkey}{timestamp}".encode("ascii")
-        ).decode("uft-8")
+        ).decode("utf-8")
 
     def get_stk_data(
-        self, payload
+            self, payload
     ):  # todo: we cannot manually enter the amount,why we need payload
         # todo: we need to customize this payload
+        print(payload)
+        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
         return {
-            "BusinessShortCode": "174379",
+            "BusinessShortCode": self.short_code,
             "Password": self.generatePassword(
-                self.shortcode, self.passKey, self.access_token_expiration
+                self.shortcode, self.pass_key, self.access_token_expiration
             ),
-            "Timestamp": datetime.now(),
-            "TransactionType": "CustomerPayBillOnline",  # todo: i dont line this,automate it as value can be another value :)
-            "Amount": payload.amount,
-            "PartyA": payload.phone_num,
-            "PartyB": "174379",
-            "PhoneNumber": payload.phone_num,
+            "Timestamp": timestamp,
+            "TransactionType": "CustomerPayBillOnline",
+            # todo: i dont line this,automate it as value can be another value :)
+            "Amount": payload["amount"],
+            "PartyA": payload["phone_num"],
+            "PartyB": self.short_code,
+            "PhoneNumber": payload["phone_num"],
             "CallBackURL": env("mpesa_callback_url"),
             "AccountReference": "Test",
             "TransactionDesc": "Test",
@@ -91,9 +113,10 @@ class MpesaGateWay:
 
     @Decorators.refreshToken
     def stk_push_request(self, payload):
+        print(self.headers)
         stk_data = self.get_stk_data(payload)
         res = requests.post(
-            env("mpesa_checkout_url"), json=stk_data, timeout=env("mpesa_timeout")
+            env("mpesa_checkout_url"), json=stk_data,headers=self.headers
         )
         res_data = res.json()
 
@@ -105,19 +128,6 @@ class MpesaGateWay:
 
         # persist the data to a database
         transaction.save()
-
-    def get_mpesa_status(data):
-        # todo: there are two objects we can get from callback,a success one and one which can fail...based way to handle that??
-        try:
-            status = data["Body"["stkCallback"]["ResultCode"]]  # the value is usually 0
-        except Exception as e:
-            status = 1  # this is when are exception occurs
-        return status
-
-    def get_transaction_object(data):
-        return Transactional.objects.get_or_create(
-            checkout_request_id=data["Body"["stkCallback"]["CheckoutRequestID"]]
-        )
 
     def handle_successful_pay(data, transaction: Transactional):
         itemJson = data["Body"]["stkCallback"]["CallbackMetadata"["Item"]]
@@ -137,8 +147,8 @@ class MpesaGateWay:
 
     def callback_handler(self, data):
         # this data is from daraja after stk push
-        status_code = self.get_mpesa_status(data)
-        transaction: Transactional = self.get_transaction_object(data)
+        status_code = get_mpesa_status(data)
+        transaction: Transactional = get_transaction_object(data)
 
         if status_code == 0:
             self.handle_successful_pay(data, transaction)

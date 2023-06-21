@@ -3,14 +3,12 @@ from .models import Transactional
 
 
 class MpesaCheckoutSerializer(serializers.ModelSerializer):
-
     class Meta:
         model = Transactional
-        fields = ("phoneNo", "amount", "accountReference", "transactionDesc")
+        fields = ["phone_num", "amount"]
 
 
 class TransactionSerializer(serializers.ModelSerializer):
-
     class Meta:
         model = Transactional
         fields = '__all__'

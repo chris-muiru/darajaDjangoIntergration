@@ -10,15 +10,16 @@ gateway = MpesaGateWay()
 
 # initiate skt push view
 class MpesaCheckout(APIView):
-    # todo: i dont think the user should provide any credentails....fetch them from the user object
+    # todo: i dont think the user should provide any credentials....fetch them from the user object
     
     serializer = MpesaCheckoutSerializer
 
     def post(self, request):
         serializer = self.serializer(data=request.data)
+        print(serializer.initial_data)
         if serializer.is_valid():
-            payload = {"data": serializer.validated_data, "request": request}
-            res = gateway.stk_push_request(payload)
+            print(serializer.data)
+            res = gateway.stk_push_request(serializer.validated_data)
 
 
 # mpesa callback view
@@ -28,4 +29,4 @@ class MpesaCallBack(APIView):
     # check the user is authenticated
     def post(self, request):
         data = request.body
-        return gateway.mpesa_callback(json.loads(data))
+        return gateway.callback_handler(json.loads(data))
