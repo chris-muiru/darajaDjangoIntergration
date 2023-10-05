@@ -1,4 +1,3 @@
-from django.shortcuts import render
 from rest_framework.views import APIView
 
 from mpesa.mpesaGateway import MpesaGateWay
@@ -18,8 +17,8 @@ class MpesaCheckout(APIView):
         serializer = self.serializer(data=request.data)
         print(serializer.initial_data)
         if serializer.is_valid():
-            print(serializer.data)
             res = gateway.stk_push_request(serializer.validated_data)
+
 
 
 # mpesa callback view

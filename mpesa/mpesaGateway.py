@@ -1,4 +1,8 @@
+import json
+
 import requests
+from requests import Request, Session
+# todo: why is the token created invalid??
 from requests.auth import HTTPBasicAuth
 from datetime import datetime
 import environ
@@ -6,23 +10,24 @@ import time
 import base64
 from .models import Transactional
 from rest_framework.response import Response
+import math
 
 env = environ.Env()
 
 
 def get_mpesa_status(data):
-    # todo: there are two objects we can get from callback,a success one and one which can fail...based way to handle that??
+    # todo: there are two objects we can get from callback,a success one and one which can fail...best way to handle that??
     try:
-        status = data["Body"["stkCallback"]["ResultCode"]]  # the value is usually 0
+        status = data["Body"["stkCallback"]
+                      ["ResultCode"]]  # the value is usually 0
     except Exception as e:
-        status = 1  # this is when are exception occurs
+        status = 1  # this is when exception occurs
     return status
 
 
 def get_transaction_object(data):
     return Transactional.objects.get_or_create(
-        checkout_request_id=data["Body"["stkCallback"]["CheckoutRequestID"]]
-    )
+        checkout_request_id=data["Body"["stkCallback"]["CheckoutRequestID"]])
 
 
 class MpesaGateWay:
@@ -41,7 +46,7 @@ class MpesaGateWay:
         self.consumer_key = env("consumer_key")
         self.consumer_secret = env("consumer_secret")
         self.access_token_url = env("access_token_url")
-        self.pass_key = env("pass_key")
+        # self.pass_key = env("pass_key")
 
         try:
             self.access_token = self.get_access_token()
@@ -54,13 +59,13 @@ class MpesaGateWay:
 
     # refresh token which expires after 3599s
     class Decorators:
+
         @staticmethod
         def refreshToken(decorator):
+
             def wrapper(gateway, *args, **kwargs):
-                if (
-                        gateway.access_token_expiration
-                        and time.time() > gateway.access_token_expiration
-                ):
+                if (gateway.access_token_expiration
+                        and time.time() > gateway.access_token_expiration):
                     token = gateway.get_access_token()
                     gateway.access_token = token
                 return decorator(gateway, *args, **kwargs)
@@ -79,45 +84,63 @@ class MpesaGateWay:
         else:
             print(res.json())
             accessToken = res.json()["access_token"]
-            self.headers = {"Authorization": f"Bearer {accessToken}"}
+            self.headers = {
+                'Authorization': f'Bearer {accessToken}',
+                'Content-Type': 'application/json'
+            }
             return accessToken
 
-    # password to be used in request to be sent to mpesa
+    # password to be used in stk requst payload
     def generatePassword(self, shortCode, passkey, timestamp):
         return base64.b64encode(
-            f"{shortCode}{passkey}{timestamp}".encode("ascii")
-        ).decode("utf-8")
+            f"{shortCode}{passkey}{timestamp}".encode()).decode("utf-8")
 
     def get_stk_data(
-            self, payload
+        self, payload
     ):  # todo: we cannot manually enter the amount,why we need payload
         # todo: we need to customize this payload
-        print(payload)
         timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+
+        # todo: i dont like this,automate it as value can be another value :)
         return {
-            "BusinessShortCode": self.short_code,
-            "Password": self.generatePassword(
-                self.shortcode, self.pass_key, self.access_token_expiration
-            ),
-            "Timestamp": timestamp,
-            "TransactionType": "CustomerPayBillOnline",
-            # todo: i dont line this,automate it as value can be another value :)
-            "Amount": payload["amount"],
-            "PartyA": payload["phone_num"],
-            "PartyB": self.short_code,
-            "PhoneNumber": payload["phone_num"],
-            "CallBackURL": env("mpesa_callback_url"),
-            "AccountReference": "Test",
-            "TransactionDesc": "Test",
+            "BusinessShortCode":
+            int(self.short_code),
+            "Password":
+            self.generatePassword(self.shortcode, self.pass_key,
+                                  self.access_token_expiration),
+            "Timestamp":
+            timestamp,
+            "TransactionType":
+            "CustomerBuyGoodsOnline",
+            "Amount":
+            int(payload["amount"]),
+            "PartyA":
+            int(payload["phone_num"]),
+            "PartyB":
+            int(self.short_code),
+            "PhoneNumber":
+            int(payload["phone_num"]),
+            "CallBackURL":
+            env("mpesa_callback_url"),
+            "AccountReference":
+            "CompanyXLTD1234V",
+            "TransactionDesc":
+            "Payment of X"
         }
 
-    @Decorators.refreshToken
+    # @Decorators.refreshToken
     def stk_push_request(self, payload):
-        print(self.headers)
+        access_token = self.get_access_token()
         stk_data = self.get_stk_data(payload)
-        res = requests.post(
-            env("mpesa_checkout_url"), json=stk_data,headers=self.headers
-        )
+        session = Session()
+
+        res = requests.request(
+            "POST",
+            env("mpesa_checkout_url"),
+            headers={'Authorization': f'Bearer {access_token}'},
+            json=stk_data)
+        print(res.text.encode('utf8'))
+
         res_data = res.json()
 
         transaction = Transactional()
